@@ -1,0 +1,443 @@
+:root {
+  --bg: #0b1220;
+  --surface: #ffffff;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --primary: #0f766e;
+  --primary-dark: #115e59;
+  --danger: #b91c1c;
+  --warning: #b45309;
+  --success: #15803d;
+  --radius: 14px;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at 20% 0%, #12314a 0%, var(--bg) 45%);
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+.auth-layout {
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  color: #e2e8f0;
+}
+
+.brand-mark {
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.brand-sub {
+  font-size: 0.82rem;
+  opacity: 0.75;
+}
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 22px 18px;
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.35);
+}
+
+h1 {
+  font-size: 1.28rem;
+  margin: 0 0 6px;
+}
+
+.subtitle {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 18px;
+  line-height: 1.45;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-label {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.field input,
+.field select {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 16px;
+  background: #f8fafc;
+}
+
+.field select:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+  background: #fff;
+}
+
+.field input {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  /* 16px minimum : évite le zoom automatique sur iOS lors d'une saisie. */
+  font-size: 16px;
+  background: #f8fafc;
+}
+
+.field input:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+  background: #fff;
+}
+
+.field-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.field-error {
+  font-size: 0.82rem;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.button {
+  border: none;
+  border-radius: 10px;
+  padding: 13px 16px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 48px; /* cible tactile confortable */
+}
+
+.button-primary {
+  background: var(--primary);
+  color: #fff;
+}
+
+.button-primary:active {
+  background: var(--primary-dark);
+}
+
+.button-ghost {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--line);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.alert {
+  border-radius: 10px;
+  padding: 11px 13px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  margin-bottom: 14px;
+}
+
+.alert-info {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.alert-error {
+  background: #fef2f2;
+  color: var(--danger);
+}
+
+.alert-success {
+  background: #f0fdf4;
+  color: var(--success);
+}
+
+.alert-warning {
+  background: #fffbeb;
+  color: var(--warning);
+}
+
+.rules {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.rules li.ok {
+  color: var(--success);
+}
+
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+  font-size: 0.9rem;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.auth-footer {
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.offline-banner {
+  background: #422006;
+  color: #fde68a;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.84rem;
+  margin-bottom: 14px;
+}
+
+.dashboard {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+  color: #e2e8f0;
+}
+
+.dashboard .card {
+  color: var(--ink);
+  margin-bottom: 16px;
+}
+
+.grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.metric {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.metric-label {
+  font-size: 0.76rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.metric-value {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.screen-center {
+  display: grid;
+  place-items: center;
+  min-height: 60vh;
+  color: #cbd5e1;
+}
+
+@media (min-width: 640px) {
+  .card {
+    padding: 28px 26px;
+  }
+}
+
+/* Phase 4 — planning : barres d'avancement et badges de retard. */
+.progress-track {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-strong, #e6e8ee);
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent, #1f6feb);
+  transition: width 200ms ease-out;
+}
+
+.badge-late {
+  color: #8a1c1c;
+  background: #fde8e8;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+input[type="range"] {
+  width: 120px;
+}
+
+/* Phase 5 — preuves terrain : galerie de vignettes et statuts. */
+.evidence-grid {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.evidence-grid li {
+  display: grid;
+  gap: 4px;
+}
+
+.evidence-thumb {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.evidence-thumb img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+  background: var(--surface-strong, #e6e8ee);
+}
+
+.evidence-status {
+  justify-self: start;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.75rem;
+}
+
+.status-info {
+  background: #e8f0fe;
+  color: #1a3d7c;
+}
+
+.status-success {
+  background: #e6f4ea;
+  color: #1d5c2f;
+}
+
+.status-error {
+  background: #fde8e8;
+  color: #8a1c1c;
+}
+
+.status-warning {
+  background: #fdf3e0;
+  color: #7a4a12;
+}
+
+.evidence-preview {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.evidence-preview img {
+  border-radius: 8px;
+}
+
+/* Phase 6 — synchronisation hors ligne : badge global, écran de suivi, cartes locales. */
+.sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+
+.sync-badge a {
+  font-size: 0.78rem;
+}
+
+.badge-offline {
+  background: #eceff4;
+  color: #46505f;
+}
+
+.badge-pending {
+  background: #e8f0fe;
+  color: #1a3d7c;
+}
+
+.badge-ok {
+  background: #e6f4ea;
+  color: #1d5c2f;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  color: var(--accent, #1f6feb);
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.78rem;
+  text-decoration: underline;
+}
+
+.evidence-local {
+  border: 1px dashed #b9c2d0;
+  border-radius: 10px;
+  padding: 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.sync-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.sync-list li {
+  border: 1px solid var(--border, #d8dde6);
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+}

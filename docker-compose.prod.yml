@@ -1,0 +1,59 @@
+# Surcharge de production : `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
+# Différences clés : pas de montage de code, frontend statique servi par Nginx avec TLS,
+# secrets fournis par l'environnement (jamais dans l'image), DEBUG=false obligatoire.
+name: kemta-suivi-prod
+
+services:
+  web:
+    build:
+      context: ./backend
+      args:
+        INSTALL_DEV: "false"
+    restart: unless-stopped
+    environment:
+      DJANGO_ENV: production
+      DEBUG: "false"
+      INSTALL_DEV: "false"
+    volumes:
+      - media:/app/var/media
+    ports: []
+
+  worker:
+    build:
+      context: ./backend
+      args:
+        INSTALL_DEV: "false"
+    restart: unless-stopped
+    environment:
+      DJANGO_ENV: production
+      DEBUG: "false"
+    volumes:
+      - media:/app/var/media
+
+  beat:
+    build:
+      context: ./backend
+      args:
+        INSTALL_DEV: "false"
+    restart: unless-stopped
+    environment:
+      DJANGO_ENV: production
+      DEBUG: "false"
+
+  frontend:
+    build:
+      context: ./frontend
+      target: prod
+    restart: unless-stopped
+    volumes: []
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    environment:
+      DJANGO_ENV: production
+
+  db:
+    restart: unless-stopped
+    ports: []
+
+  redis:
+    restart: unless-stopped

@@ -1,0 +1,36 @@
+# Configuration de lint/format du backend (ruff).
+#
+# Usage (depuis `backend/`) :
+#   .venv/bin/ruff check .        # lint
+#   .venv/bin/ruff format --check .   # vérification du formatage
+#
+# La ligne de conduite volontairement resserrée (E/F/W/I/B/UP/SIM/C4/RUF) est appliquée
+# à tout le code ; deux règles sont neutralisées pour des raisons documentées ci-dessous.
+
+line-length = 100
+target-version = "py311"
+
+extend-exclude = [
+    "**/migrations/*",  # code généré par Django, jamais retouché à la main
+    ".venv",
+]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "RUF"]
+ignore = [
+    # Idiome Django/DRF : les attributs de classe mutables (`Meta`, `choices`, plans de
+    # throttling) sont lus par le framework, pas partagés entre instances.
+    "RUF012",
+    # La longueur des lignes est garantie par `ruff format`, pas par le linter.
+    "E501",
+    # Caractères ambigus : le code et les commentaires sont en français, qui utilise
+    # légitimement « × », « — » ou « ’ » (typographie, pas homoglyphes de code).
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[lint.per-file-ignores]
+"config/settings*.py" = ["F403", "F405"]  # import * assumé dans les réglages
+"conftest.py" = ["E402"]
+"**/tests/*" = ["B011"]

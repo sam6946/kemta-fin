@@ -1,0 +1,31 @@
+# Secrets et environnement — jamais versionnés
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+*.sqlite3
+var/
+
+# Node
+node_modules/
+dist/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# E2E
+playwright-report/
+test-results/
+
+# Éditeurs / OS
+.idea/
+.vscode/
+.DS_Store
