@@ -9,7 +9,7 @@ from typing import Any
 from django.conf import settings
 from django.utils import timezone
 
-from apps.core.activity import log_event
+from apps.core.activity import get_client_ip, log_event
 from apps.core.exceptions import KemtaAPIError
 from apps.users.models import OTPCode
 
@@ -85,7 +85,7 @@ def issue_otp(
 
     phone = (phone or "").strip() or None
     email = (email or "").strip().lower() or None
-    ip_address = request.META.get("REMOTE_ADDR") if request else None
+    ip_address = get_client_ip(request) if request else None
     user_agent = request.META.get("HTTP_USER_AGENT", "")[:200] if request else ""
 
     _enforce_send_limits(phone=phone, email=email, purpose=purpose, ip_address=ip_address)

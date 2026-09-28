@@ -27,6 +27,7 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from apps.core.activity import log_event
+from apps.core.events import DomainEvent, emit
 from apps.core.exceptions import KemtaAPIError
 from apps.core.money import validate_fcfa_amount
 from apps.finance.access import can_manage_finance, can_settle_finance
@@ -259,6 +260,19 @@ def _log_threshold_crossing(
             },
             request=request,
         )
+        emit(
+            DomainEvent.BUDGET_THRESHOLD_REACHED,
+            project=project,
+            actor=actor,
+            entity_type="Project",
+            entity_id=project.pk,
+            payload={
+                "threshold_percent": 80,
+                "consumption_rate": str(after),
+                "committed": int(after_committed),
+                "planned": int(project.budget_total),
+            },
+        )
     if before < FULL_RATE <= after:
         log_event(
             "BUDGET_EXCEEDED",
@@ -274,6 +288,19 @@ def _log_threshold_crossing(
                 "planned": int(project.budget_total),
             },
             request=request,
+        )
+        emit(
+            DomainEvent.BUDGET_THRESHOLD_REACHED,
+            project=project,
+            actor=actor,
+            entity_type="Project",
+            entity_id=project.pk,
+            payload={
+                "threshold_percent": 100,
+                "consumption_rate": str(after),
+                "committed": int(after_committed),
+                "planned": int(project.budget_total),
+            },
         )
 
 
@@ -798,6 +825,16 @@ def transition_expense(
             metadata=metadata,
             request=request,
         )
+        if action == "SUBMIT":
+            # Événement métier : les décideurs financiers sont prévenus (tâche Celery).
+            emit(
+                DomainEvent.EXPENSE_SUBMITTED,
+                project=project,
+                actor=actor,
+                entity_type="Expense",
+                entity_id=expense.pk,
+                payload={"title": expense.title, "amount": int(expense.amount)},
+            )
         if action == "APPROVE":
             _log_threshold_crossing(
                 project=project,

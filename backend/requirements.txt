@@ -9,3 +9,4 @@ psycopg2-binary==2.9.13
 Pillow==12.3.0
 phonenumbers==9.0.40
 gunicorn==23.0.0
+sentry-sdk==2.35.0

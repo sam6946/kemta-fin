@@ -9,6 +9,7 @@ qu'une décision appliquée en direct.
 from __future__ import annotations
 
 from apps.core.activity import log_event
+from apps.core.events import DomainEvent, emit
 from apps.core.exceptions import KemtaAPIError
 from apps.evidences.models import (
     ACTIONS_REQUIRING_COMMENT,
@@ -115,4 +116,15 @@ def apply_transition(
         },
         request=request,
     )
+    if action == "REJECT":
+        # Événement métier : l'auteur (et le pilotage du projet) sont prévenus hors requête.
+        emit(
+            DomainEvent.EVIDENCE_REJECTED,
+            project=evidence.project,
+            actor=actor,
+            entity_type="Evidence",
+            entity_id=evidence.pk,
+            payload={"comment": comment[:200]},
+            recipient_ids=[evidence.author_id],
+        )
     return evidence

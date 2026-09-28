@@ -137,6 +137,9 @@ class ActivityLog(models.Model):
         ADJUSTMENT_RECORDED = "ADJUSTMENT_RECORDED", "Ajustement financier"
         BUDGET_THRESHOLD_REACHED = "BUDGET_THRESHOLD_REACHED", "Seuil budgétaire atteint"
         BUDGET_EXCEEDED = "BUDGET_EXCEEDED", "Budget dépassé"
+        # Phase 10 — traitements asynchrones et surveillance.
+        PROJECT_DELAY_DETECTED = "PROJECT_DELAY_DETECTED", "Retard de projet détecté"
+        TASK_FAILED = "TASK_FAILED", "Tâche asynchrone échouée"
 
     id = models.BigAutoField(primary_key=True)
     actor = models.ForeignKey(
@@ -192,3 +195,36 @@ class ActivityLog(models.Model):
 
     def delete(self, using=None, keep_parents=False):
         raise IntegrityError("Un événement du journal ne peut pas être supprimé.")
+
+
+class TaskRun(models.Model):
+    """Suivi d'exécution des tâches Celery (phase 10) : succès, retries, échecs et leur erreur.
+
+    Alimenté par les signaux Celery (`apps/core/task_tracking.py`). Le message d'erreur est
+    tronqué et ne contient jamais les arguments de la tâche (ils peuvent porter des numéros
+    de téléphone ou des codes OTP).
+    """
+
+    class State(models.TextChoices):
+        STARTED = "STARTED", "En cours"
+        SUCCESS = "SUCCESS", "Réussie"
+        RETRY = "RETRY", "Nouvelle tentative"
+        FAILURE = "FAILURE", "Échec"
+
+    task_id = models.CharField("identifiant Celery", max_length=64, unique=True)
+    name = models.CharField("tâche", max_length=160, db_index=True)
+    state = models.CharField("état", max_length=8, choices=State.choices, db_index=True)
+    retries = models.PositiveSmallIntegerField("tentatives", default=0)
+    error = models.CharField("erreur", max_length=500, blank=True)
+    started_at = models.DateTimeField("démarrée le", default=timezone.now, db_index=True)
+    finished_at = models.DateTimeField("terminée le", null=True, blank=True)
+    duration_ms = models.PositiveIntegerField("durée (ms)", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "exécution de tâche"
+        verbose_name_plural = "exécutions de tâches"
+        ordering = ["-started_at"]
+        indexes = [models.Index(fields=["state", "started_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.name} [{self.state}]"

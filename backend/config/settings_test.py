@@ -48,3 +48,7 @@ PASSWORD_MIN_LENGTH = 10
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
 ALLOWED_HOSTS = ["testserver", "localhost", "127.0.0.1"]
+
+METRICS_BACKEND = "memory"
+METRICS_TOKEN = "test-metrics-token"
+DASHBOARD_CACHE_SECONDS = 60

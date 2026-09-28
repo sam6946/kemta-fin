@@ -19,8 +19,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core import metrics
 from apps.core.exceptions import KemtaAPIError
-from apps.core.pagination import DefaultPagination
+from apps.core.pagination import DefaultPagination, LargeListPagination
 from apps.finance.access import can_view_finance, finance_permissions_map
 from apps.finance.models import (
     BudgetCategory,
@@ -97,7 +98,12 @@ class BudgetLineListCreateView(APIView):
         project = _accessible_project(request.user, pk)
         _require_view(request.user, project)
         # `select_related("project")` : les permissions du sérialiseur ne doivent pas relire le projet.
-        lines = list(BudgetLine.objects.filter(project=project).select_related("project"))
+        paginator = LargeListPagination()
+        lines = list(
+            paginator.paginate_queryset(
+                BudgetLine.objects.filter(project=project).select_related("project"), request
+            )
+        )
         # Nombre constant de requêtes, quelle que soit la taille du budget : jamais de N+1.
         counts = dict(
             Expense.objects.filter(project=project)
@@ -115,16 +121,12 @@ class BudgetLineListCreateView(APIView):
                 "finance_permissions_by_project": finance_permissions_map(request.user, [project]),
             },
         )
-        return Response(
-            {
-                "count": len(lines),
-                "results": serializer.data,
-                "summary": budget_summary(project),
-                "categories": [
-                    {"value": value, "label": label} for value, label in BudgetCategory.choices
-                ],
-            }
-        )
+        payload = paginator.get_paginated_response(serializer.data).data
+        payload["summary"] = budget_summary(project)
+        payload["categories"] = [
+            {"value": value, "label": label} for value, label in BudgetCategory.choices
+        ]
+        return Response(payload)
 
     def post(self, request, pk):
         project = _accessible_project(request.user, pk)
@@ -384,14 +386,26 @@ class ExpenseReceiptView(APIView):
         response["Cache-Control"] = "private, max-age=60"
         return response
 
+    def get_throttles(self):
+        # Quota d'envoi (phase 11) sur l'écriture uniquement : consulter n'est pas limité ici.
+        if self.request.method == "POST":
+            self.throttle_scope = "upload"
+        return super().get_throttles()
+
     def post(self, request, pk):
         expense = _expense_with_context(request.user, pk)
         upload = request.FILES.get("file")
         if upload is None:
+            metrics.record_upload("receipt", "rejected", reason="file_required")
             raise KemtaAPIError("file_required", "Aucun fichier reçu.")
-        expense = attach_receipt(
-            expense=expense, actor=request.user, upload=upload, request=request
-        )
+        try:
+            expense = attach_receipt(
+                expense=expense, actor=request.user, upload=upload, request=request
+            )
+        except KemtaAPIError as exc:
+            metrics.record_upload("receipt", "rejected", reason=exc.code)
+            raise
+        metrics.record_upload("receipt", "accepted", size=int(getattr(upload, "size", 0) or 0))
         return Response(serialize_expense(request.user, expense), status=status.HTTP_201_CREATED)
 
 

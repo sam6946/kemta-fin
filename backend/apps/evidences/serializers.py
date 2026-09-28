@@ -11,7 +11,7 @@ from rest_framework import serializers
 
 from apps.core.exceptions import KemtaAPIError
 from apps.evidences.models import Evidence, EvidenceValidation, GpsStatus
-from apps.projects.access import has_project_capability
+from apps.projects.access import resolve_capabilities
 from apps.projects.models import Project, Task
 from apps.users.roles import Capability
 from apps.users.serializers import UserSerializer
@@ -148,19 +148,35 @@ class EvidenceSerializer(serializers.ModelSerializer):
         user = self.context.get("user")
         if user is None:
             return {}
-        may_validate = has_project_capability(user, obj.project, Capability.VALIDATE_EVIDENCE)
+        capabilities = self._capabilities(user, obj.project)
+        may_validate = capabilities.get(Capability.VALIDATE_EVIDENCE, False)
         is_author = obj.author_id == getattr(user, "pk", None)
         return {
             "validate_evidence": bool(may_validate and not is_author),
             "cannot_validate_own": bool(may_validate and is_author),
             "can_see_location": bool(
-                may_validate
-                or has_project_capability(user, obj.project, Capability.VIEW_ACTIVITY)
-                or is_author
+                may_validate or capabilities.get(Capability.VIEW_ACTIVITY, False) or is_author
             ),
         }
 
+    def _capabilities(self, user, project: Project) -> dict[str, bool]:
+        """Capacités par projet, calculées **une fois** par projet (jamais par preuve).
+
+        Les vues de liste peuvent fournir `context["capabilities"]` (carte vectorisée) ; à
+        défaut, le résultat est mémorisé pour la durée de la sérialisation.
+        """
+        provided = self.context.get("capabilities")
+        if provided is not None and project.pk in provided:
+            return provided[project.pk]
+        memo = self.context.setdefault("_capabilities_memo", {})
+        if project.pk not in memo:
+            memo[project.pk] = resolve_capabilities(user, project)
+        return memo[project.pk]
+
     def get_validation_count(self, obj: Evidence) -> int:
+        # Historique préchargé par les listes (`prefetch_related("validations")`) : pas de COUNT.
+        if "validations" in getattr(obj, "_prefetched_objects_cache", {}):
+            return len(obj.validations.all())
         return obj.validations.count()
 
 

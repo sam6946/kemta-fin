@@ -9,6 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -62,11 +63,17 @@ INSTALLED_APPS = [
     "apps.evidences",
     "apps.sync",
     "apps.finance",
+    "apps.dashboard",
+    "apps.notifications",
 ]
 
 MIDDLEWARE = [
+    # Le plus externe : la mesure inclut tout le reste de la chaîne (phase 11).
+    "apps.core.middleware.MetricsMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    # Compression HTTP des réponses JSON volumineuses (listes, dashboard), phase 11.
+    "django.middleware.gzip.GZipMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -74,6 +81,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.core.middleware.RequestIDMiddleware",
+    "apps.core.middleware.SecurityHeadersMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -152,13 +160,18 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.DefaultPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_THROTTLE_CLASSES": [
-        "rest_framework.throttling.ScopedRateThrottle",
+        "apps.core.throttling.KemtaScopedThrottle",
+        "apps.core.throttling.KemtaAnonThrottle",
+        "apps.core.throttling.KemtaUserThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
         "otp_request": env.str("THROTTLE_OTP_REQUEST", default="20/hour"),
         "password_reset": env.str("THROTTLE_PASSWORD_RESET", default="20/hour"),
         "login": env.str("THROTTLE_LOGIN", default="10/min"),
         "sensitive": env.str("THROTTLE_SENSITIVE", default="60/hour"),
+        # Phase 11 : envois de fichiers et synchronisation (coûteux : CPU, disque, verrous).
+        "upload": env.str("THROTTLE_UPLOAD", default="240/hour"),
+        "sync": env.str("THROTTLE_SYNC", default="600/hour"),
         # Protections par défaut de DRF (par IP pour les anonymes, par utilisateur sinon).
         "anon": env.str("THROTTLE_ANON", default="60/min"),
         "user": env.str("THROTTLE_USER", default="2000/hour"),
@@ -166,7 +179,12 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
+    # Nombre de reverse proxies de confiance devant l'application : DRF n'utilise
+    # `X-Forwarded-For` qu'à cette condition (sinon un client pourrait usurper son IP et
+    # contourner le rate limiting).
+    "NUM_PROXIES": env.int("NUM_PROXIES", default=0),
 }
+NUM_PROXIES = REST_FRAMEWORK["NUM_PROXIES"]
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("JWT_ACCESS_MINUTES", default=15)),
@@ -232,12 +250,59 @@ CELERY_BROKER_URL = env.str("CELERY_BROKER_URL", default="redis://redis:6379/0")
 CELERY_TASK_ALWAYS_EAGER = IS_TEST or env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 CELERY_TASK_EAGER_PROPAGATES = True
 CELERY_TIMEZONE = "UTC"
+# Fiabilité (phase 10) : une tâche n'est acquittée qu'une fois terminée (relivrée si le worker
+# meurt), un worker ne réserve qu'une tâche à la fois (pas de tâche longue qui bloque les autres),
+# et toute tâche est bornée dans le temps.
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_TASK_SOFT_TIME_LIMIT = env.int("CELERY_TASK_SOFT_TIME_LIMIT", default=120)
+CELERY_TASK_TIME_LIMIT = env.int("CELERY_TASK_TIME_LIMIT", default=180)
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BEAT_SCHEDULE = {
     "purge-expired-otps": {
         "task": "apps.users.tasks.purge_expired_otps",
         "schedule": timedelta(hours=6),
     },
+    # 05:00 UTC = 06:00 à Douala : les équipes voient les retards en début de journée.
+    "detect-project-delays": {
+        "task": "apps.notifications.tasks.detect_project_delays",
+        "schedule": crontab(hour=5, minute=0),
+    },
+    "purge-old-notifications": {
+        "task": "apps.notifications.tasks.purge_old_notifications",
+        "schedule": crontab(hour=3, minute=30, day_of_week="sun"),
+    },
+    "cleanup-temp-files": {
+        "task": "apps.core.tasks.cleanup_temp_files",
+        "schedule": crontab(hour=2, minute=15),
+    },
+    "purge-old-task-runs": {
+        "task": "apps.core.tasks.purge_old_task_runs",
+        "schedule": crontab(hour=3, minute=0),
+    },
 }
+
+# Rétention et entretien (phase 10)
+NOTIFICATION_RETENTION_DAYS = env.int("NOTIFICATION_RETENTION_DAYS", default=90)
+TASK_RUN_RETENTION_DAYS = env.int("TASK_RUN_RETENTION_DAYS", default=14)
+TEMP_FILE_MAX_AGE_HOURS = env.int("TEMP_FILE_MAX_AGE_HOURS", default=24)
+
+# Dashboard (phase 8/11) : 0 désactive le cache.
+DASHBOARD_CACHE_SECONDS = env.int("DASHBOARD_CACHE_SECONDS", default=60)
+
+# ---------------------------------------------------------------------------
+# Observabilité (phase 11)
+# ---------------------------------------------------------------------------
+# `redis` : compteurs partagés entre tous les workers ; `memory` : un processus (dev/test).
+METRICS_BACKEND = env.str(
+    "METRICS_BACKEND",
+    default="memory" if (IS_TEST or env.bool("USE_LOCAL_CACHE", default=False)) else "redis",
+)
+# Jeton du scraper Prometheus (`Authorization: Bearer …`). Vide = endpoint réservé aux admins.
+METRICS_TOKEN = env.str("METRICS_TOKEN", default="")
+SLOW_REQUEST_SECONDS = env.float("SLOW_REQUEST_SECONDS", default=1.5)
+SENTRY_DSN = env.str("SENTRY_DSN", default="")
+SENTRY_TRACES_SAMPLE_RATE = env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.0)
 
 # ---------------------------------------------------------------------------
 # Internationalisation
@@ -284,8 +349,24 @@ if IS_PRODUCTION:
     CSRF_COOKIE_SECURE = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = "DENY"
+    # Derrière Nginx, un seul reverse proxy de confiance par défaut.
+    if "NUM_PROXIES" not in os.environ:
+        NUM_PROXIES = 1
+        REST_FRAMEWORK["NUM_PROXIES"] = 1
+    # L'orchestrateur sonde `/api/health/` en HTTP interne : jamais de redirection HTTPS.
+    SECURE_REDIRECT_EXEMPT = [r"^api/health/$"]
 else:
     SECURE_SSL_REDIRECT = False
+
+SECURE_REFERRER_POLICY = "same-origin"
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
+# Les jetons JWT voyagent dans `Authorization` : pas de cookie de session côté API, mais les
+# cookies de l'admin Django restent protégés.
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+# Taille maximale d'un corps de requête hors fichiers (les fichiers ont leur propre plafond).
+DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 
 # ---------------------------------------------------------------------------
 # Logs structurés
@@ -321,3 +402,27 @@ ENABLE_DEV_OUTBOX = env.bool("ENABLE_DEV_OUTBOX", default=DEBUG and not IS_PRODU
 
 APP_VERSION = env.str("APP_VERSION", default="0.1.0")
 DEFAULT_SIGNUP_ROLE = env.str("DEFAULT_SIGNUP_ROLE", default="PROJECT_OWNER")
+
+
+# ---------------------------------------------------------------------------
+# Suivi des erreurs (optionnel) : actif uniquement si SENTRY_DSN est fourni.
+# ---------------------------------------------------------------------------
+if SENTRY_DSN:  # pragma: no cover - dépend d'un service externe
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.celery import CeleryIntegration
+        from sentry_sdk.integrations.django import DjangoIntegration
+
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            environment=ENV,
+            release=APP_VERSION,
+            integrations=[DjangoIntegration(), CeleryIntegration()],
+            traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
+            # Aucune donnée personnelle (téléphone, IP, en-têtes) n'est envoyée.
+            send_default_pii=False,
+        )
+    except ImportError:
+        import logging as _logging
+
+        _logging.getLogger("kemta").warning("SENTRY_DSN défini mais sentry-sdk est absent.")

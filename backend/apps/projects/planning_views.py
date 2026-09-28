@@ -23,6 +23,7 @@ from rest_framework.views import APIView
 
 from apps.core.activity import log_event
 from apps.core.exceptions import KemtaAPIError
+from apps.core.pagination import LargeListPagination
 from apps.projects.access import accessible_projects, has_project_capability
 from apps.projects.models import (
     FINAL_STATUSES,
@@ -94,8 +95,10 @@ class MilestoneListCreateView(PlanningBaseView):
             .prefetch_related("tasks")
             .order_by("order", "planned_date", "created_at")
         )
-        serializer = MilestoneSerializer(queryset, many=True, context={"request": request})
-        return Response({"count": len(serializer.data), "results": serializer.data})
+        paginator = LargeListPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        serializer = MilestoneSerializer(page, many=True, context={"request": request})
+        return paginator.get_paginated_response(serializer.data)
 
     @transaction.atomic
     def post(self, request, pk):
@@ -197,11 +200,12 @@ class TaskListCreateView(PlanningBaseView):
             )
         queryset = queryset.order_by(ordering, "created_at")
 
+        paginator = LargeListPagination()
+        page = paginator.paginate_queryset(queryset, request)
         serializer = TaskSerializer(
-            queryset, many=True, context={"request": request, "project": project}
+            page, many=True, context={"request": request, "project": project}
         )
-        data = serializer.data
-        return Response({"count": len(data), "results": data})
+        return paginator.get_paginated_response(serializer.data)
 
     @transaction.atomic
     def post(self, request, pk):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from django.conf import settings
 from django.db import IntegrityError
 
 from .models import ActivityLog
@@ -27,11 +28,21 @@ FORBIDDEN_METADATA_KEYS = {
 
 
 def get_client_ip(request) -> str | None:
+    """Adresse IP du client, **sans faire confiance à un en-tête falsifiable**.
+
+    `X-Forwarded-For` est fourni par le client : n'en lire que la première valeur permettrait
+    d'usurper n'importe quelle adresse dans le journal. On ne s'y fie que derrière
+    `NUM_PROXIES` reverse proxies de confiance (Nginx) : l'adresse retenue est alors celle
+    ajoutée par le proxy le plus proche de nous, pas celle envoyée par le client.
+    """
     if request is None:
         return None
-    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-    if x_forwarded_for:
-        return x_forwarded_for.split(",")[0].strip()
+    proxies = int(getattr(settings, "NUM_PROXIES", 0) or 0)
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if proxies > 0 and forwarded:
+        hops = [hop.strip() for hop in forwarded.split(",") if hop.strip()]
+        if hops:
+            return hops[-proxies] if len(hops) >= proxies else hops[0]
     return request.META.get("REMOTE_ADDR")
 
 

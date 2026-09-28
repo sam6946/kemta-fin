@@ -10,9 +10,10 @@ from __future__ import annotations
 from decimal import Decimal
 
 from apps.core.activity import log_event
+from apps.core.events import DomainEvent, emit
 from apps.core.exceptions import KemtaAPIError
 from apps.projects.access import has_project_capability
-from apps.projects.models import Milestone, Task
+from apps.projects.models import Milestone, MilestoneStatus, Task
 from apps.projects.progress import recalculate_project_progress
 from apps.projects.serializers import MilestoneSerializer, TaskSerializer
 from apps.users.roles import Capability
@@ -26,6 +27,18 @@ FIELD_UPDATE_FIELDS = frozenset(
 
 def _permission_denied(message: str) -> KemtaAPIError:
     return KemtaAPIError("permission_denied", message, http_status=403)
+
+
+def _announce_milestone_validated(*, milestone: Milestone, project, actor, progress) -> None:
+    """Événement métier `MilestoneValidated` (phase 10) : un jalon vient d'être terminé."""
+    emit(
+        DomainEvent.MILESTONE_VALIDATED,
+        project=project,
+        actor=actor,
+        entity_type="Milestone",
+        entity_id=milestone.pk,
+        payload={"title": milestone.title, "project_progress": str(progress)},
+    )
 
 
 def create_milestone(*, project, actor, data, request=None) -> tuple[Milestone, Decimal]:
@@ -51,6 +64,10 @@ def create_milestone(*, project, actor, data, request=None) -> tuple[Milestone, 
         },
         request=request,
     )
+    if milestone.status == MilestoneStatus.DONE:
+        _announce_milestone_validated(
+            milestone=milestone, project=project, actor=actor, progress=progress
+        )
     return milestone, progress
 
 
@@ -83,6 +100,10 @@ def update_milestone(
         metadata={"changed": changed, "project_progress": str(progress)},
         request=request,
     )
+    if before["status"] != MilestoneStatus.DONE and milestone.status == MilestoneStatus.DONE:
+        _announce_milestone_validated(
+            milestone=milestone, project=project, actor=actor, progress=progress
+        )
     return milestone, progress
 
 

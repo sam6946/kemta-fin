@@ -24,6 +24,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core import metrics
 from apps.core.exceptions import KemtaAPIError
 from apps.sync.idempotency import claim, mark_done
 from apps.sync.models import SyncOperation, SyncOperationStatus
@@ -42,6 +43,7 @@ class SyncBatchView(APIView):
     """`POST /api/sync/batch/` — reprise de la file hors ligne."""
 
     permission_classes = [IsAuthenticated]
+    throttle_scope = "sync"  # phase 11 : quota par utilisateur (lots de 50 opérations au plus)
 
     def post(self, request):
         serializer = SyncBatchInputSerializer(data=request.data)
@@ -52,6 +54,12 @@ class SyncBatchView(APIView):
 
         for operation in serializer.validated_data["operations"]:
             result = self._apply(operation, request)
+            metrics.record_sync(
+                result["type"],
+                result["status"],
+                replayed=bool(result.get("replayed")),
+                code=(result.get("error") or {}).get("code", ""),
+            )
             results.append(result)
             counts[result["status"].lower()] += 1
             if result.get("replayed"):

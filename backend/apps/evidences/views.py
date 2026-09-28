@@ -31,6 +31,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core import metrics
 from apps.core.activity import log_event
 from apps.core.exceptions import KemtaAPIError
 from apps.evidences.access import accessible_evidences
@@ -68,8 +69,28 @@ class EvidenceCreateView(APIView):
     """`POST /api/evidences/` — dépôt d'une preuve depuis le terrain."""
 
     permission_classes = [IsAuthenticated]
+    # Phase 11 : l'envoi de photos coûte du CPU (dérivées) et du disque — quota par utilisateur.
+    throttle_scope = "upload"
 
     def post(self, request):
+        try:
+            response = self._create(request)
+        except KemtaAPIError as exc:
+            # Rejet métier (fichier trop gros, type refusé, hors périmètre…) : compté par code.
+            metrics.record_upload("evidence", "rejected", reason=exc.code)
+            raise
+        replayed = response.headers.get("Idempotency-Replayed") == "true"
+        if response.status_code == 409:
+            metrics.record_upload("evidence", "duplicate")
+        elif replayed:
+            metrics.record_upload("evidence", "replayed")
+        else:
+            metrics.record_upload(
+                "evidence", "accepted", size=int(response.data.get("size_bytes") or 0)
+            )
+        return response
+
+    def _create(self, request):
         idempotency_key = request.headers.get("Idempotency-Key") or request.META.get(
             "HTTP_IDEMPOTENCY_KEY"
         )
@@ -416,14 +437,33 @@ class EvidencePendingCountView(APIView):
                 ) from exc
             queryset = queryset.filter(captured_at__lt=timezone.now() - timedelta(hours=hours))
 
-        # Seules les preuves que l'utilisateur a le droit de valider (capacité calculée).
-        validatable = [
-            evidence
-            for evidence in queryset.order_by("captured_at")
-            if has_project_capability(request.user, evidence.project, Capability.VALIDATE_EVIDENCE)
-            and evidence.author_id != request.user.pk
+        # Seules les preuves que l'utilisateur a le droit de valider (capacité calculée), en
+        # SQL et en nombre constant de requêtes : le filtre porte sur les projets, pas sur
+        # chaque preuve, et la page est bornée par la pagination.
+        from apps.core.pagination import LargeListPagination
+        from apps.projects.access import build_capabilities_map
+        from apps.projects.models import Project
+
+        project_ids = list(queryset.values_list("project_id", flat=True).distinct())
+        projects = list(Project.objects.filter(pk__in=project_ids))
+        capabilities = build_capabilities_map(request.user, projects)
+        validatable_project_ids = [
+            project.pk
+            for project in projects
+            if capabilities.get(project.pk, {}).get(Capability.VALIDATE_EVIDENCE)
         ]
-        serializer = EvidenceSerializer(
-            validatable, many=True, context={"request": request, "user": request.user}
+        validatable = (
+            queryset.filter(project_id__in=validatable_project_ids)
+            .exclude(author_id=request.user.pk)
+            .select_related("project", "author", "task")
+            .prefetch_related("validations")
+            .order_by("captured_at", "id")
         )
-        return Response({"count": len(serializer.data), "results": serializer.data})
+        paginator = LargeListPagination()
+        page = paginator.paginate_queryset(validatable, request)
+        serializer = EvidenceSerializer(
+            page,
+            many=True,
+            context={"request": request, "user": request.user, "capabilities": capabilities},
+        )
+        return paginator.get_paginated_response(serializer.data)
