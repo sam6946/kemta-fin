@@ -60,10 +60,10 @@ cd frontend && npm install && npm run dev
 ## 3. Tests
 
 ```bash
-cd backend && pytest                       # 368 tests, sans infrastructure externe
-cd backend && pytest --cov=apps            # couverture (95 %)
+cd backend && pytest                       # 591 tests, sans infrastructure externe
+cd backend && pytest --cov=apps            # couverture (96 %)
 cd backend && ruff check . && ruff format --check .    # lint + formatage
-cd frontend && npm run lint && npm test   # lint ESLint + 94 tests : mot de passe oublié, projets, membres,
+cd frontend && npm run lint && npm test   # lint ESLint + 125 tests : dashboard, espace de travail, notifications, journal, mot de passe oublié, projets, membres,
                                           # planning, preuves terrain (compression, GPS, envoi), file hors ligne
                                           # (persistance, retry, conflits, reprise automatique), formatage FCFA
 cd frontend && npm run build               # vérification TypeScript + build
@@ -186,6 +186,27 @@ adaptateur console : **aucun service externe n'est nécessaire**.
 - **En ligne uniquement** : les opérations financières ne sont pas mises en file hors ligne —
   l'interface l'indique et propose de réessayer (contrairement aux preuves terrain).
 
+## 9 bis. Périmètre phases 8 à 11 (dashboard, journal, notifications, exploitation)
+
+- **Dashboard agrégé** (`GET /api/projects/{id}/dashboard/`) : avancement, budget, alertes de
+  retard/dépassement déterministes, dernières preuves et dépenses, activité, permissions — en
+  **une requête**, mis en cache 60 s et invalidé à chaque écriture. **Espace de travail**
+  (`/espace`) pour ingénieurs, PME, validateurs, financiers et investisseurs.
+- **Journal d'activité** consultable (paginé, filtrable, réservé aux rôles autorisés) ; le
+  journal est immuable et les suppressions sont logiques.
+- **Notifications in-app** (`/notifications`, cloche) alimentées par Celery à partir de cinq
+  événements métier, groupées, avec retry et suivi des tâches (`TaskRun`). **Aucun polling.**
+- **Exploitation** : métriques Prometheus, limiteurs (OTP, login, envois, synchronisation),
+  Nginx HTTPS de production, test de charge (`backend/loadtest/run.py`).
+- Documentation : [`docs/ops.md`](docs/ops.md) (runbook), [`docs/security-review.md`](docs/security-review.md),
+  [`docs/performance.md`](docs/performance.md).
+
+```bash
+# Test de charge ciblé (préproduction ou local — jamais en production)
+cd backend && python manage.py seed_dev && python manage.py seed_loadtest
+python loadtest/run.py --base-url http://127.0.0.1:8000 --users 8 --duration 20
+```
+
 ## 10. Documentation
 
 | Document | Contenu |
@@ -202,6 +223,9 @@ adaptateur console : **aucun service externe n'est nécessaire**.
 | [`docs/flows/evidences.md`](docs/flows/evidences.md) | Flux preuve terrain : capture hors ligne, envoi idempotent, périmètre, validation, historique |
 | [`docs/flows/finance.md`](docs/flows/finance.md) | Flux financier : budget, cycle de vie des dépenses, paiements, dépassements, contre-écritures, concurrence |
 | [`docs/offline-sync.md`](docs/offline-sync.md) | Stratégie offline-first : file locale, reprise, conflits, cache (implémentée en phase 6) |
+| [`docs/ops.md`](docs/ops.md) | Runbook : files Celery, retry, métriques, journal protégé, sauvegardes, mise en production |
+| [`docs/security-review.md`](docs/security-review.md) | Revue de sécurité de la phase 11, risques résiduels, liste de contrôle |
+| [`docs/performance.md`](docs/performance.md) | Requêtes SQL verrouillées, cache, test de charge mesuré et ses limites |
 | [`docs/STATUS.md`](docs/STATUS.md) | État d'avancement phase par phase et fonctionnalité par fonctionnalité |
 
 ## 11. Structure du dépôt
@@ -211,7 +235,9 @@ backend/     config/ (settings, urls, celery) · apps/core (journal, santé, err
              apps/users (identité, OTP, sessions, rôles) ·
              apps/organizations (organisations, membres) ·
              apps/projects (projets, membres, règles d'accès) · apps/evidences (preuves, validations) ·
-             apps/sync (lot de synchronisation idempotent) · tests
+             apps/sync (lot de synchronisation idempotent) · apps/finance (budget, dépenses) ·
+             apps/dashboard (dashboard agrégé, espace de travail) · apps/notifications ·
+             loadtest/ (test de charge) · tests
 frontend/    src/ (api, auth, components, pages) · tests unitaires (vitest)
 docs/        cadrage Phase 0 et spécifications
 docker-compose.yml · docker-compose.prod.yml · .env.example

@@ -245,12 +245,28 @@ supprimée ; une erreur se corrige par une **contre-écriture**.
 
 ## 6. Notifications et exploitation (Phase 10/11)
 
-`Notification` : `user` · `type` (`MILESTONE_VALIDATED` / `EXPENSE_SUBMITTED` /
-`EVIDENCE_REJECTED` / `BUDGET_THRESHOLD_REACHED` / `PROJECT_DELAYED`) · `title` · `body` ·
-`payload` (JSON) · `group_key` (regroupement) · `count` · `is_read` · `created_at`.
+### `Notification` (`apps/notifications/models.py`)
 
-`CeleryTaskLog` (suivi) : `task_id` · `name` · `state` · `retries` · `error` · `created_at` ·
-`updated_at`.
+`user` · `project` (nullable) · `event_type` (`MILESTONE_VALIDATED` / `EXPENSE_SUBMITTED` /
+`EVIDENCE_REJECTED` / `BUDGET_THRESHOLD_REACHED` / `PROJECT_DELAYED`) · `group_key` · `dedupe_key`
+· `title` · `body` · `count` (événements regroupés) · `data` (JSON, ≤ 10 éléments récents) ·
+`last_event_at` · `read_at`.
+Contraintes : **au plus une notification non lue par (utilisateur, `group_key`)** (regroupement
+sûr en concurrence) ; `dedupe_key` unique par utilisateur quand renseignée (un retry ne double
+jamais). Index `(user, read_at, -last_event_at)` pour la cloche. Purge des notifications lues
+après 90 jours.
+
+### `TaskRun` (`apps/core/models.py`) — suivi des tâches Celery
+
+`task_id` (unique) · `name` · `state` (`STARTED`/`SUCCESS`/`RETRY`/`FAILURE`) · `retries` ·
+`error` (500 caractères max, **sans arguments** de la tâche) · `started_at` · `finished_at` ·
+`duration_ms`. Alimenté par les signaux Celery ; purge après 14 jours (échecs : 56 jours).
+
+### Suppression logique (`SoftDeleteModel`, phase 9)
+
+`deleted_at` (nullable, indexé). Le manager par défaut **exclut** les lignes supprimées ; le
+manager `all_objects` les retrouve pour l'audit. `Evidence`, `BudgetLine`, `Expense`, `Payment`
+et `Organization` l'utilisent. La suppression n'efface jamais le `ActivityLog` ni le grand livre.
 
 ## 7. Événements journalisés (`ActivityLog.action`)
 

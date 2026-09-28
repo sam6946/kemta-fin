@@ -1,4 +1,6 @@
 # Surcharge de production : `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
+# Nécessite Docker Compose ≥ 2.24 (balises `!override` / `!reset`, indispensables pour retirer les
+# montages de code et les ports de développement du fichier de base).
 # Différences clés : pas de montage de code, frontend statique servi par Nginx avec TLS,
 # secrets fournis par l'environnement (jamais dans l'image), DEBUG=false obligatoire.
 name: kemta-suivi-prod
@@ -14,9 +16,15 @@ services:
       DJANGO_ENV: production
       DEBUG: "false"
       INSTALL_DEV: "false"
-    volumes:
+      # Médias servis par Nginx après contrôle d'accès de l'API (X-Accel-Redirect).
+      MEDIA_X_ACCEL_REDIRECT: "true"
+      # Un seul reverse proxy de confiance (Nginx) devant l'application.
+      NUM_PROXIES: "1"
+      METRICS_BACKEND: redis
+    volumes: !override
       - media:/app/var/media
-    ports: []
+      - static:/app/var/static
+    ports: !reset []
 
   worker:
     build:
@@ -27,7 +35,8 @@ services:
     environment:
       DJANGO_ENV: production
       DEBUG: "false"
-    volumes:
+      METRICS_BACKEND: redis
+    volumes: !override
       - media:/app/var/media
 
   beat:
@@ -39,21 +48,34 @@ services:
     environment:
       DJANGO_ENV: production
       DEBUG: "false"
+    volumes: !override []
 
   frontend:
     build:
       context: ./frontend
       target: prod
     restart: unless-stopped
-    volumes: []
-    ports:
+    ports: !override
       - "${HTTP_PORT:-80}:80"
-    environment:
-      DJANGO_ENV: production
+      - "${HTTPS_PORT:-443}:443"
+    environment: !reset null
+    volumes: !override
+      # Certificats TLS fournis par l'hébergeur (fullchain.pem + privkey.pem) : jamais dans l'image.
+      - ${TLS_CERTS_DIR:-./certs}:/etc/nginx/certs:ro
+      - media:/var/media:ro
+      - static:/var/static:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   db:
     restart: unless-stopped
-    ports: []
+    ports: !reset []
 
   redis:
     restart: unless-stopped
+
+volumes:
+  static:

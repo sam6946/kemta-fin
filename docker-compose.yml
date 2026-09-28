@@ -70,7 +70,14 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-kemta}:${POSTGRES_PASSWORD:-kemta}@db:5432/${POSTGRES_DB:-kemta}
       REDIS_URL: redis://redis:6379/1
       CELERY_BROKER_URL: redis://redis:6379/0
-    command: celery -A config worker -l info --concurrency 2
+    # -Q : une seule file (`celery`) ; --max-tasks-per-child libère la mémoire des workers longs.
+    command: celery -A config worker -l info --concurrency 2 -Q celery --max-tasks-per-child 200
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
+      interval: 60s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     volumes:
       - ./backend:/app
       - media:/app/var/media
@@ -90,7 +97,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-kemta}:${POSTGRES_PASSWORD:-kemta}@db:5432/${POSTGRES_DB:-kemta}
       REDIS_URL: redis://redis:6379/1
       CELERY_BROKER_URL: redis://redis:6379/0
-    command: celery -A config beat -l info
+    command: celery -A config beat -l info --schedule /tmp/celerybeat-schedule
     volumes:
       - ./backend:/app
     depends_on:

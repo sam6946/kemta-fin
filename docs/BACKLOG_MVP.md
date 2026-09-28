@@ -236,7 +236,7 @@ permissions financières ; transactions PostgreSQL atomiques ; tests de cohéren
 - les opérations concurrentes ne produisent pas de solde incohérent ;
 - les tests couvrent permissions, arrondis, dépassement, rollback et concurrence représentative.
 
-### Phase 8 — Dashboard projet et workspace métier
+### Phase 8 — Dashboard projet et workspace métier  ✅ *livrée — voir `docs/STATUS.md`*
 
 **Objectif :** rendre l'état du chantier compréhensible en quelques secondes.
 
@@ -257,7 +257,7 @@ cache ciblé ; états loading, empty, error et offline.
 - aucune boucle de polling de cinq secondes n'est utilisée ;
 - les permissions affichées correspondent aux permissions backend.
 
-### Phase 9 — Journalisation, validations et suppression logique
+### Phase 9 — Journalisation, validations et suppression logique  ✅ *livrée — voir `docs/STATUS.md`*
 
 **Objectif :** rendre les actions sensibles traçables.
 
@@ -277,7 +277,7 @@ métadonnées IP/appareil lorsque légalement et techniquement approprié.
   critique ;
 - les tests vérifient la création et la protection des journaux.
 
-### Phase 10 — Traitements asynchrones et notifications internes
+### Phase 10 — Traitements asynchrones et notifications internes  ✅ *livrée — voir `docs/STATUS.md`*
 
 **Objectif :** déplacer les traitements non critiques hors des requêtes HTTP.
 
@@ -296,7 +296,7 @@ fichiers temporaires ; documentation d'exploitation.
 - les files Celery et Redis sont observables ;
 - les tests couvrent succès, échec et retry.
 
-### Phase 11 — Performance, sécurité et observabilité
+### Phase 11 — Performance, sécurité et observabilité  ✅ *livrée — voir `docs/STATUS.md`*
 
 **Objectif :** rendre le MVP exploitable en production.
 

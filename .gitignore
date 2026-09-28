@@ -29,3 +29,4 @@ test-results/
 .idea/
 .vscode/
 .DS_Store
+certs/

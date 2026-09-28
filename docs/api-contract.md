@@ -410,33 +410,88 @@ opération), l'auteur et la note/motif. Le grand livre n'est ni modifiable ni su
 **Hors ligne** : aucune opération financière n'est mise en file (l'argent engagé exige
 l'autorité du serveur) ; l'interface l'annonce explicitement. Voir `docs/flows/finance.md` §1.
 
-## 8. Dashboard agrégé (Phase 8 — MVP-011)
+## 8. Dashboard, espace de travail, activité, notifications (Phases 8 à 10 — MVP-011, 012, 014)
 
-`GET` **`/api/projects/{id}/dashboard/`** (endpoint agrégé, une seule requête) ·
-`GET` `/api/projects/{id}/activity/` (journal paginé).
+Tous ces endpoints sont livrés (tests : `apps/dashboard/tests/`, `apps/core/tests/test_activity_api.py`,
+`apps/notifications/tests/`). Dates en ISO 8601, montants en **FCFA entiers**, calculés côté serveur.
 
-### `GET /api/projects/{id}/dashboard/` — réponse (cible)
+### 8.1 `GET /api/projects/{id}/dashboard/` — une seule requête
+
+Réponse (extrait réel ; les blocs dépendent du profil `audience` : `manager`, `engineer`,
+`field`, `investor`) :
 ```json
 {
-  "project": { "id", "name", "status", "currency": "XAF", "progress": 62 },
-  "budget": { "planned": 50000000, "consumed": 31250000, "balance": 18750000,
-              "consumption_rate": 62.5, "threshold_reached": false },
-  "milestones": { "last": { "title", "status", "planned_date", "actual_date" },
-                  "next": { "title", "status", "planned_date", "days_remaining": 12 },
-                  "late_count": 1 },
-  "tasks": { "total": 48, "done": 30, "late": 3 },
-  "evidence": { "total": 120, "pending": 4, "validated": 108, "rejected": 6, "flagged": 2,
-                "recent": [ { "id", "thumbnail", "status", "captured_at", "author" } ] },
-  "expenses": { "recent": [ { "id", "title", "amount", "status", "incurred_on" } ] },
-  "alerts": [ { "code": "PROJECT_DELAYED", "severity": "warning", "message": "…", "since": "…" } ],
-  "activity": [ { "id", "action", "actor", "created_at", "entity" } ],
-  "permissions": { "can_validate_evidence": true, "can_manage_finance": false,
-                   "can_edit_schedule": true },
-  "generated_at": "2026-01-15T09:12:03Z"
+  "reference_date": "2026-09-29", "generated_at": "…", "audience": "manager", "role": "PROJECT_OWNER",
+  "project": { "id": 1, "name": "…", "code": "RBS-T1", "status": "ACTIVE", "status_label": "En cours",
+               "city": "Douala", "region": "Littoral", "currency": "XAF",
+               "planned_start_date": "…", "planned_end_date": "…", "days_to_end": 82 },
+  "progress": { "progress": 46.67, "milestones_total": 3, "milestones_done": 1, "milestones_late": 1,
+                "tasks_total": 3, "tasks_done": 1, "tasks_late": 1 },
+  "milestones": { "last_completed": { "id", "title", "status", "planned_date", "actual_date", "days_late" },
+                  "next": { "id", "title", "status", "planned_date", "days_late" } },
+  "budget": { "planned": 50000000, "committed": 25000000, "paid": 0, "outstanding": 25000000,
+              "balance": 25000000, "consumption_rate": 50.0, "threshold": "OK", "currency": "XAF" },
+  "alerts": [ { "code": "MILESTONE_LATE", "severity": "critical", "message": "…",
+                "entity_type": "Milestone", "entity_id": 2, "days_late": 9 } ],
+  "alerts_total": 2,
+  "evidences": { "counts": { "pending", "validated", "rejected", "flagged", "stale" },
+                 "latest": [ { "id", "status", "captured_at", "author", "thumbnail_url" } ] },
+  "expenses": { "counts": { "draft", "submitted", "approved", "paid", "rejected" },
+                "latest": [ { "id", "title", "amount", "status", "incurred_on", "supplier" } ] },
+  "activity": [ { "id", "action", "action_label", "actor", "entity_type", "entity_id", "created_at" } ],
+  "permissions": { "validate_evidence": true, "view_finance": true, "manage_finance": true,
+                   "view_activity": true, "can_approve": true, "…": "…" }
 }
 ```
-Le bloc `budget` s'appuie déjà sur la synthèse de la phase 7 (`F16`) : mêmes calculs, mêmes
-alertes, aucune divergence possible.
+* `budget` et `expenses` valent `null` sans la permission `view_finance` (agent terrain, validateur).
+  `activity` vaut `null` sans `view_activity`.
+* Alertes **déterministes**, triées par gravité puis code, recalculées à chaque appel à partir de
+  `reference_date` (jamais d'un état mémorisé) : `MILESTONE_LATE`, `TASK_LATE` (5 détaillées, puis
+  `TASKS_LATE_MORE`), `PROJECT_END_PASSED`, `NO_PLANNING`, `EVIDENCE_PENDING_STALE` (preuve en
+  attente depuis plus de 48 h) et les alertes budgétaires de la synthèse financière F16 (seuils
+  80 % / 100 %, dépassement) — mêmes calculs que l'écran finances, aucune divergence. Listes
+  bornées : 5 dernières preuves/dépenses, 10 événements d'activité, 15 alertes (`alerts_total`
+  donne le total réel).
+* Cache serveur 60 s par (projet, utilisateur, jour), invalidé à chaque écriture ; **pas de polling**.
+* Projet hors périmètre → `404`.
+
+### 8.2 `GET /api/workspace/` — espace de travail ingénieur/PME/investisseur
+
+`profile` (`manager` / `field` / `investor`), `totals`, `projects[]` (20 max, `projects_truncated`),
+`my_tasks[]`, `to_validate {count, items[]}` (preuves des autres à valider), `to_approve
+{count, items[]}` (dépenses soumises), `unread_notifications`. Nombre de requêtes SQL constant,
+quel que soit le nombre de projets.
+
+### 8.3 Journal d'activité (lecture seule, paginé)
+
+| Méthode | Endpoint | Accès |
+|---|---|---|
+| `GET` | `/api/projects/{id}/activity/` | capacité `view_activity` sur le projet (403 sinon, 404 hors périmètre) |
+| `GET` | `/api/activity/` | administration plateforme (`view_auth_logs`) : tous les événements, IP/appareil inclus |
+| `GET` | `/api/activity/mine/` | chaque utilisateur : ses propres événements de sécurité |
+| `GET` | `/api/activity/meta/` | groupes et libellés d'actions pour les filtres |
+
+Filtres : `group` (`project`, `members`, `planning`, `evidences`, `finance`, `system`), `action`,
+`entity_type`, `entity_id`, `actor`, `since`, `until` (AAAA-MM-JJ) ; `page`, `page_size` (≤ 100).
+Aucun verbe d'écriture : `POST`/`PUT`/`PATCH`/`DELETE` → `405`.
+
+### 8.4 Notifications in-app
+
+| Méthode | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/notifications/` | liste paginée de l'utilisateur (`?unread=1`) |
+| `GET` | `/api/notifications/unread-count/` | `{ "unread_count": n }` — appelé au montage, au retour d'onglet, jamais en boucle |
+| `POST` | `/api/notifications/{id}/read/` | marque lue (la notification d'un autre → 404) |
+| `POST` | `/api/notifications/read-all/` | tout marquer lu → `{ "marked": n, "unread_count": 0 }` |
+
+Élément : `id`, `event_type`, `title`, `body`, `count` (événements regroupés), `project`, `data`,
+`last_event_at`, `read_at`. Événements : `MILESTONE_VALIDATED`, `EXPENSE_SUBMITTED`,
+`EVIDENCE_REJECTED`, `BUDGET_THRESHOLD_REACHED`, `PROJECT_DELAYED` (voir `docs/ops.md` §2).
+
+### 8.5 Pagination
+
+Toute liste : `{ count, next, previous, results }`. Taille par défaut 20 (max 100 via
+`page_size`) ; listes de planning/budget d'un projet : 100 par page (max 200).
 
 ## 9. Santé et exploitation (Phase 1/11)
 
@@ -447,6 +502,14 @@ alertes, aucune divergence possible.
 ```
 Aucun secret, aucune donnée métier. `/api/health/` n'est **pas** authentifié mais n'expose rien
 de sensible (pas de version de librairies, pas de DEBUG).
+
+| Méthode | Endpoint | Accès |
+|---|---|---|
+| `GET` | `/api/ops/metrics/` | format Prometheus ; `Authorization: Bearer $METRICS_TOKEN` **ou** capacité `view_operations` |
+| `GET` | `/api/ops/status/` | JSON : base, cache, files Celery, `TaskRun`, échecs récents ; mêmes accès |
+
+Nginx de production répond `404` sur `/api/ops/` : à interroger depuis le réseau interne
+(détails : `docs/ops.md` §4).
 
 ## 10. Outils de développement (jamais en production)
 

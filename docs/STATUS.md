@@ -1,13 +1,16 @@
 # État d'avancement — MVP KEMTA SUIVI
 
-Dernière mise à jour : phases 0, 1, 2, 3, 4, 5, 6 et 7 livrées.
-Preuves d'exécution : `cd backend && pytest --cov=apps` → **468 tests** (2 ignorés : concurrence
-PostgreSQL), couverture **96 %** ; `cd frontend && npm test` → **102 tests** ; `npm run build` →
-OK ; `ruff check` + `ruff format --check` → propres ; `npm run lint` → propre.
-Parcours vérifiés en direct derrière le proxy frontend : upload multipart, rejeu idempotent
-(preuve et lot), galerie, décision de validation, téléchargement de la miniature, lot de
-synchronisation (application, conflits classés, rejeu sans second effet), parcours financier
-complet (budget → dépense → approbation → paiement → contre-écriture).
+Dernière mise à jour : **phases 0 à 11 livrées** (2026-09-29).
+Preuves d'exécution : `cd backend && pytest --cov=apps` → **591 tests** (2 ignorés : concurrence
+PostgreSQL), couverture **96 %** ; `cd frontend && npm test` → **125 tests** (16 fichiers) ;
+`npm run build` → OK ; `ruff check` + `ruff format --check` → propres ; `npm run lint` et
+`tsc --noEmit` → propres. Test de charge ciblé : 1 726 requêtes, 0 erreur, p95 < 320 ms par
+endpoint (détails et limites : `docs/performance.md`).
+Parcours vérifiés en direct derrière le proxy frontend (phases 5 à 7) : upload multipart, rejeu
+idempotent, galerie, décision de validation, miniature, lot de synchronisation, parcours
+financier complet. Phases 8 à 11 : vérifiées par les tests automatiques et le test de charge
+sur gunicorn ; **non vérifiées ici : PostgreSQL, Redis réel, Nginx/TLS** (absents du bac à sable)
+— à valider en préproduction avec `docs/ops.md` §7 et `docs/security-review.md` §6.
 
 ## Vue par phase
 
@@ -21,10 +24,10 @@ complet (budget → dépense → approbation → paiement → contre-écriture).
 | 5 — Preuves terrain | capture, compression, GPS, hash, statuts, validations | ✅ livrée |
 | 6 — Offline-first | IndexedDB, file de synchronisation, idempotence, conflits | ✅ livrée |
 | 7 — Budget, dépenses | budget, postes, dépenses, paiements, transactions atomiques | ✅ livrée |
-| 8 — Dashboard agrégé | endpoint `/api/projects/{id}/dashboard/`, alertes, cache | ⏳ à venir |
-| 9 — Journalisation étendue | suppression logique, écran d'activité, journaux protégés | 🟡 partielle (modèle + événements phases 2→5) |
-| 10 — Asynchrone et notifications | Celery, événements métier, notifications in-app | 🟡 partielle (Celery + SMS/email async) |
-| 11 — Performance et observabilité | pagination, N+1, cache, métriques, tests de charge | 🟡 partielle (pagination, N+1 verrouillés par tests) |
+| 8 — Dashboard agrégé | endpoint `/api/projects/{id}/dashboard/`, espace de travail, alertes déterministes, cache invalidé à l'écriture, états loading/empty/error/offline, sans polling | ✅ livrée |
+| 9 — Journalisation étendue | suppression logique, consultation paginée filtrable par rôle, journal protégé (immuable, IP/appareil réservés à l'administration) | ✅ livrée |
+| 10 — Asynchrone et notifications | Celery, 5 événements métier, notifications in-app groupées, suivi `TaskRun`, retry, nettoyage, runbook | ✅ livrée |
+| 11 — Performance et observabilité | pagination, N+1 verrouillés, vignettes authentifiées, métriques Prometheus, limiteurs, HTTPS/Nginx de production, revue de sécurité, test de charge | ✅ livrée (validation PostgreSQL/Redis/TLS à faire en préproduction) |
 
 ## Vue par fonctionnalité (P0)
 
@@ -40,12 +43,12 @@ complet (budget → dépense → approbation → paiement → contre-écriture).
 | MVP-008 | Validation et historique des preuves | ✅ | `apps/evidences/tests/test_validation.py` (20) |
 | MVP-009 | File offline et synchronisation | ✅ | `apps/sync/tests/test_batch.py` (26) · `src/lib/__tests__/outbox.test.ts` (17) · `src/sync/__tests__/SyncProvider.test.tsx` (4) · `src/pages/__tests__/SyncPage.test.tsx` (6) · capture hors ligne dans `ProjectEvidences.test.tsx` (3) |
 | MVP-010 | Budget et dépenses | ✅ | `apps/finance/tests/` : `test_budget.py` (10) · `test_expenses.py` (19) · `test_payments.py` (9) · `test_ledger.py` (15) · `test_permissions.py` (16) · `test_rollback.py` (9) · `test_concurrency.py` (5, dont 2 PostgreSQL) · `test_guards.py` (11) · `test_seed_finance.py` (8) · `src/pages/__tests__/ProjectFinance.test.tsx` (8) |
-| MVP-011 | Dashboard projet agrégé | ⏳ phase 8 | compteurs réels déjà affichés (pas de mock) |
-| MVP-012 | Journal d'activité | 🟡 | modèle immuable + événements auth/org/projet/membres ; écran d'activité en phase 9 |
-| MVP-013 | Médias | 🟡 | compression côté appareil (≤ 1600 px, q0.82) + miniature WebP 320 px et version liste JPEG 1080 px générées par Celery ; antivirus/quotas en phase 10 |
-| MVP-014 | Notifications et événements | ⏳ phase 10 | SMS/email déjà traités par Celery |
-| MVP-015 | Observabilité et healthchecks | 🟡 | `/api/health/`, logs JSON, `request_id`, métriques à compléter en phase 11 |
-| MVP-016 | Tests E2E et seed | 🟡 | seed dev complet (9 comptes, 3 organisations, 4 projets FCFA, membres) ; E2E Playwright en phase 11 |
+| MVP-011 | Dashboard projet agrégé | ✅ | `apps/dashboard/tests/` : `test_dashboard.py` (13) · `test_dashboard_queries.py` (7) · `test_workspace.py` (8) · `src/components/__tests__/ProjectDashboard.test.tsx` (7) · `Workspace.test.tsx` (6) |
+| MVP-012 | Journal d'activité | ✅ | `apps/core/tests/test_activity.py` (5) · `test_activity_api.py` (13) · `src/components/__tests__/ProjectActivity.test.tsx` (2) |
+| MVP-013 | Médias | ✅ (antivirus PDF : recommandé avant ouverture publique) | compression côté appareil + miniature WebP 320 px et version liste 1080 px par Celery ; vignettes authentifiées (`AuthImage`, 3 tests) ; type réel, taille et quotas d'envoi contrôlés (`docs/security-review.md` §3) |
+| MVP-014 | Notifications et événements | ✅ | `apps/notifications/tests/` : `test_events.py` (13) · `test_tasks.py` (10, succès/échec/retry) · `test_api.py` (8) · `apps/core/tests/test_tasks.py` (7) · `Notifications.test.tsx` (5) |
+| MVP-015 | Observabilité et healthchecks | ✅ | `/api/health/`, logs JSON, `request_id`, `/api/ops/metrics/` (Prometheus), `/api/ops/status/` : `apps/core/tests/test_ops.py` (14), `test_scalability.py` (5), `test_security.py` (13) ; runbook `docs/ops.md` |
+| MVP-016 | Tests E2E et seed | 🟡 | seed dev complet + `seed_loadtest` (volume) + `loadtest/run.py` ; **E2E navigateur (Playwright) non réalisés** : les parcours sont couverts par les tests d'API et de composants |
 | MVP-017 | **Réinitialisation du mot de passe** | ✅ | `test_password_reset.py` (20 cas), `test_security.py` |
 | MVP-018 | Réinitialisation par email (P1/P2) | ⏳ | email vérifié par OTP déjà disponible |
 
@@ -78,6 +81,29 @@ complet (budget → dépense → approbation → paiement → contre-écriture).
 | Permissions | `apps/finance/access.py` | `view_finance` / `manage_finance` / **engagement** (rôles de pilotage uniquement) |
 | API | `apps/finance/views.py` + `urls.py` | 11 routes (17 opérations F1→F17), projet hors périmètre → 404, listes sans N+1 |
 | Écran | `frontend/src/pages/ProjectFinance.tsx` | budget, dépenses, paiements, grand livre, alertes — aucun montant recalculé côté client |
+
+## Phases 8 à 11 — où trouver quoi
+
+| Élément | Où | Rôle |
+|---|---|---|
+| Dashboard agrégé | `apps/dashboard/` (`services.py`, `cache.py`, `signals.py`) | une requête, profils manager/engineer/field/investor, cache versionné |
+| Journal consultable | `apps/core/activity_views.py` | filtres, pagination, rôles ; lecture seule |
+| Événements métier | `apps/core/events.py` → `apps/notifications/` | `on_commit` → tâche Celery → notifications groupées |
+| Suivi des tâches | `apps/core/task_tracking.py` (`TaskRun`) | succès/retry/échec, erreur tronquée |
+| Métriques | `apps/core/metrics.py`, `middleware.py`, `ops_views.py` | HTTP, envois, synchronisation, Celery, 429 |
+| Limiteurs | `apps/core/throttling.py` | OTP, login, envois, synchronisation ; IP fiable via `NUM_PROXIES` |
+| Frontend | `AppBar`, `NotificationBell`, `ProjectDashboard`, `Workspace`, `ProjectActivity`, `AuthImage` | sans polling ; pages chargées à la demande |
+| Production | `frontend/nginx.prod.conf`, `docker-compose.prod.yml`, `.env.example` | TLS, HSTS, CSP, médias protégés |
+| Docs | `docs/ops.md`, `docs/security-review.md`, `docs/performance.md` | runbook, revue, mesures |
+
+## Limites connues (à traiter avant la mise en production réelle)
+
+- Les écrans jalons/tâches/postes budgétaires/preuves en attente n'affichent que la première
+  page de 100 éléments (l'API renvoie `next`) ; pas encore de bouton « Charger la suite ».
+- Les tests tournent sous SQLite ; la concurrence PostgreSQL (2 tests ignorés) et les `REVOKE`
+  du journal (`docs/ops.md` §5) restent à vérifier sur une vraie base.
+- PDF de justificatif : contrôle de signature seulement (antivirus recommandé).
+- Aucun test E2E navigateur ; charge mesurée sur SQLite (à refaire sur l'environnement cible).
 
 ## Points ouverts (ADR)
 
