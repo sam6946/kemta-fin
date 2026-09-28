@@ -1,6 +1,8 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useAuth } from "./auth/AuthContext";
+import AppBar from "./components/AppBar";
 import DashboardPage from "./pages/DashboardPage";
 import OrganizationsPage from "./pages/OrganizationsPage";
 import ProjectDetailPage from "./pages/ProjectDetailPage";
@@ -12,12 +14,27 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import SyncPage from "./pages/SyncPage";
 import { SyncProvider } from "./sync/SyncProvider";
 
+// Écrans secondaires chargés à la demande : le premier affichage reste léger (3G / mobile).
+const WorkspacePage = lazy(() => import("./pages/WorkspacePage"));
+const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
+
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
   const location = useLocation();
   if (loading) return <div className="screen-center">Chargement…</div>;
   if (!user) return <Navigate to="/connexion" replace state={{ from: location.pathname }} />;
-  return children;
+  return (
+    <>
+      <AppBar />
+      {children}
+    </>
+  );
+}
+
+function Lazy({ children }: { children: JSX.Element }) {
+  return (
+    <Suspense fallback={<div className="screen-center">Chargement…</div>}>{children}</Suspense>
+  );
 }
 
 export default function App() {
@@ -78,6 +95,27 @@ export default function App() {
         element={
           <RequireAuth>
             <SyncPage />
+          </RequireAuth>
+        }
+      />
+      {/* Phase 8 — espace de travail ; phase 10 — centre de notifications */}
+      <Route
+        path="/espace"
+        element={
+          <RequireAuth>
+            <Lazy>
+              <WorkspacePage />
+            </Lazy>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/notifications"
+        element={
+          <RequireAuth>
+            <Lazy>
+              <NotificationsPage />
+            </Lazy>
           </RequireAuth>
         }
       />

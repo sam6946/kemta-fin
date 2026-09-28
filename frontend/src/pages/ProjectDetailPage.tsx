@@ -1,6 +1,6 @@
 /** Détail d'un projet : informations, membres, gestion des accès (MVP-005). */
 
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { ApiError } from "../api/client";
@@ -8,10 +8,14 @@ import { projectsApi, type Project, type ProjectMember } from "../api/projects";
 import { fetchRoles, type RoleMeta } from "../api/roles";
 import { messageForErrorCode } from "../auth/passwordPolicy";
 import { Alert, Button, Field } from "../components/ui";
+import ProjectDashboard from "../components/ProjectDashboard";
 import ProjectEvidences from "./ProjectEvidences";
 import ProjectFinance from "./ProjectFinance";
 import ProjectPlanning from "./ProjectPlanning";
 import { formatDate, formatFcfa, formatPercent } from "../lib/format";
+
+// Journal : chargé seulement pour les rôles qui y ont droit (`view_activity`).
+const ProjectActivity = lazy(() => import("../components/ProjectActivity"));
 
 export default function ProjectDetailPage() {
   const { id = "" } = useParams();
@@ -155,6 +159,9 @@ export default function ProjectDetailPage() {
         ) : null}
       </section>
 
+      {/* MVP-011 — dashboard agrégé : une seule requête, tout est calculé par le backend */}
+      <ProjectDashboard projectId={project.id} />
+
       <ProjectPlanning project={project} members={members} onChanged={load} />
 
       <ProjectEvidences project={project} onChanged={load} />
@@ -169,6 +176,13 @@ export default function ProjectDetailPage() {
           </Alert>
         </section>
       )}
+
+      {/* MVP-012 — journal d'activité en lecture seule, réservé aux rôles autorisés */}
+      {project.permissions.view_activity ? (
+        <Suspense fallback={<section className="card">Chargement du journal…</section>}>
+          <ProjectActivity projectId={project.id} />
+        </Suspense>
+      ) : null}
 
       <section className="card">
         <h2 style={{ fontSize: "1rem", marginTop: 0 }}>Membres ({members.length})</h2>

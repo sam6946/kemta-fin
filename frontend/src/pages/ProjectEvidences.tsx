@@ -9,6 +9,7 @@
  * d'un calcul local ; une preuve sans statut n'est jamais présentée comme certaine.
  */
 
+import AuthImage from "../components/AuthImage";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api/client";
@@ -475,7 +476,7 @@ export default function ProjectEvidences({ project, onChanged }: Props) {
         {evidences.map((item) => (
           <li key={item.id} data-testid="evidence-card">
             <button type="button" className="evidence-thumb" onClick={() => void openDetail(item)}>
-              <img src={item.thumbnail_url} alt={item.description || "Preuve terrain"} loading="lazy" />
+              <AuthImage src={item.thumbnail_url} alt={item.description || "Preuve terrain"} />
             </button>
             <div className={`evidence-status status-${EVIDENCE_STATUS_TONES[item.status]}`}>
               {item.status_label}
@@ -508,7 +509,7 @@ export default function ProjectEvidences({ project, onChanged }: Props) {
             {formatDate(selected.captured_at)} · reçue le {formatDate(selected.received_at)} ·{" "}
             {selected.device_model} ({selected.device_platform})
           </p>
-          <img
+          <AuthImage
             src={selected.file_url}
             alt={selected.description || "Preuve"}
             style={{ maxWidth: "100%", borderRadius: 8 }}

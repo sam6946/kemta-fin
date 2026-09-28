@@ -144,3 +144,23 @@ async function tryRefresh(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Télécharge un média protégé (miniature de preuve, justificatif) avec le jeton.
+ *
+ * Une balise `<img src="/api/...">` n'envoie jamais l'en-tête `Authorization` : sans cette
+ * récupération explicite, les vignettes de l'API (accès contrôlé par projet) seraient refusées.
+ */
+export async function fetchBlob(path: string): Promise<Blob> {
+  const send = () =>
+    fetch(`/api${path}`, { headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {} });
+  let response: Response;
+  try {
+    response = await send();
+    if (response.status === 401 && (await tryRefresh())) response = await send();
+  } catch {
+    throw new ApiError("offline", "Pas de connexion. Vérifiez votre réseau puis réessayez.", 0);
+  }
+  if (!response.ok) throw await parseError(response);
+  return response.blob();
+}

@@ -1,46 +1,28 @@
 /**
  * Tableau de bord minimal de la chaîne d'accès (phase 2).
  *
- * Le dashboard agrégé (MVP-011) arrive en phase 8 : ici on affiche le profil,
- * les capacités réellement accordées par le backend et l'ajout facultatif de l'email.
+ * Phase 8 : l'espace de travail agrégé (`/api/workspace/`) remplace les simples compteurs. On
+ * y ajoute le profil, les capacités réellement accordées par le backend et l'email facultatif.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
-import { organizationsApi } from "../api/organizations";
-import { projectsApi } from "../api/projects";
 import { useAuth } from "../auth/AuthContext";
 import { messageForErrorCode } from "../auth/passwordPolicy";
 import SyncBadge from "../components/SyncBadge";
+import Workspace from "../components/Workspace";
 import { Alert, Button, Field } from "../components/ui";
 
 export default function DashboardPage() {
   const { user, logout, refreshProfile } = useAuth();
-  const [counts, setCounts] = useState<{ projects: number; organizations: number } | null>(null);
   const [email, setEmail] = useState(user?.email ?? "");
   const [code, setCode] = useState("");
   const [stage, setStage] = useState<"idle" | "code">("idle");
   const [feedback, setFeedback] = useState<{ tone: "success" | "error" | "info"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const loadCounts = useCallback(async () => {
-    try {
-      const [projectPage, organizationPage] = await Promise.all([
-        projectsApi.list(),
-        organizationsApi.list(),
-      ]);
-      setCounts({ projects: projectPage.count, organizations: organizationPage.count });
-    } catch {
-      setCounts(null); // l'échec d'un compteur ne doit pas casser le tableau de bord
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadCounts();
-  }, [loadCounts]);
 
   if (!user) return null;
 
@@ -97,25 +79,14 @@ export default function DashboardPage() {
         <p className="subtitle">
           {user.phone_masked} · {user.is_phone_verified ? "téléphone vérifié" : "téléphone non vérifié"}
         </p>
-        <div className="grid">
-          <div className="metric">
-            <div className="metric-label">Projets accessibles</div>
-            <div className="metric-value">{counts ? counts.projects : "…"}</div>
-          </div>
-          <div className="metric">
-            <div className="metric-label">Organisations</div>
-            <div className="metric-value">{counts ? counts.organizations : "…"}</div>
-          </div>
-        </div>
         <div className="links" style={{ flexDirection: "row", gap: 16 }}>
           <Link to="/projets">Voir mes projets</Link>
           <Link to="/organisations">Mes organisations</Link>
+          <Link to="/notifications">Notifications</Link>
         </div>
-        <p className="field-hint" style={{ marginTop: 12 }}>
-          Les indicateurs consolidés (avancement, budget consommé, alertes) arriveront avec
-          l'endpoint agrégé de la phase 8. Aucune valeur n'est simulée ici.
-        </p>
       </section>
+
+      <Workspace />
 
       <section className="card">
         <h2 style={{ fontSize: "1rem", marginTop: 0 }}>Adresse email (facultatif)</h2>
